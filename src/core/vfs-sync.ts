@@ -3,6 +3,7 @@ import * as path from 'path'
 import * as fs from 'fs'
 import * as os from 'os'
 import * as crypto from 'crypto'
+import micromatch from 'micromatch'
 import { lw } from '../lw'
 
 const logger = lw.log('VFS')
@@ -372,25 +373,12 @@ function hashUri(uri: vscode.Uri): string {
 }
 
 /**
- * Escape regex metacharacters in a string.
- */
-function escapeRegex(value: string): string {
-    return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
-}
-
-/**
- * Check if a path matches any exclude pattern.
+ * Check if a path matches any exclude pattern using micromatch.
+ * This correctly handles glob patterns like `**\/node_modules/**` for top-level matches.
  */
 function matchesExcludePattern(relativePath: string, patterns: string[]): boolean {
-    for (const pattern of patterns) {
-        // Simple glob matching - supports ** and *
-        const regex = escapeRegex(pattern)
-            .replace(/\*\*/g, '{{DOUBLESTAR}}')
-            .replace(/\*/g, '[^/]*')
-            .replace(/\{\{DOUBLESTAR\}\}/g, '.*')
-        if (new RegExp(`^${regex}$`).test(relativePath)) {
-            return true
-        }
+    if (patterns.length === 0) {
+        return false
     }
-    return false
+    return micromatch.isMatch(relativePath, patterns, { dot: true })
 }
