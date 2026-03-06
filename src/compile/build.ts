@@ -565,9 +565,10 @@ async function afterSuccessfulBuilt(lastStep: Step, skipped: boolean) {
         logger.log(`Not auto-opening: openAfterBuild=${openAfterBuild}, viewerMode=${viewerMode} (requires viewerMode=tab)`)
     }
 
-    // Show prompt to open PDF if auto-open didn't happen
-    logger.log(`didAutoOpen=${didAutoOpen}, will show prompt: ${!didAutoOpen}`)
-    if (!didAutoOpen && openAfterBuild) {
+    // Show prompt to open PDF if auto-open didn't happen and viewer mode is tab
+    // Note: The openDocumentAfterBuild setting only applies when viewerMode is 'tab'
+    logger.log(`didAutoOpen=${didAutoOpen}, viewerMode=${viewerMode}`)
+    if (!didAutoOpen && openAfterBuild && viewerMode === 'tab') {
         logger.log('Showing "Open PDF" prompt to user.')
         const openAction = 'Open PDF'
         void vscode.window.showInformationMessage(
