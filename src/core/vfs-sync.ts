@@ -129,7 +129,13 @@ async function syncProject(rootUri: vscode.Uri): Promise<SyncedProject | undefin
     // Check if already synced
     const existingProject = syncedProjects.get(rootUri.toString())
     if (existingProject) {
-        logger.log(`Project already synced: ${rootUri.toString(true)} -> ${existingProject.localRootPath}`)
+        logger.log(`Project already synced, refreshing: ${rootUri.toString(true)} -> ${existingProject.localRootPath}`)
+        try {
+            await syncDirectory(rootUri, existingProject.localRootPath, existingProject, excludePatterns)
+            existingProject.syncedAt = Date.now()
+        } catch (error) {
+            logger.logError(`Failed to refresh VFS project: ${rootUri.toString(true)} -> ${existingProject.localRootPath}`, error)
+        }
         return existingProject
     }
 
