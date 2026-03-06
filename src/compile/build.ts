@@ -165,6 +165,7 @@ async function buildLoop() {
         logger.log('Another build loop is already running.')
         return
     }
+    isBuilding = true
 
     const configuration = vscode.workspace.getConfiguration('latex-workshop')
     const showProgress = configuration.get('latex.build.showProgress') as boolean
@@ -200,37 +201,39 @@ async function doBuildLoop(
 ) {
     // Clear all logs before starting
     lw.parser.parse.clearLog()
-    isBuilding = true
     lw.compile.compiledPDFWriting++
     // Stop watching the PDF file to avoid reloading the PDF viewer twice.
     // The builder will be responsible for refreshing the viewer.
     let skipped = true
-    while (true) {
-        // Check if build was cancelled
-        if (token?.isCancellationRequested) {
-            logger.log('Build loop terminated due to cancellation.')
-            break
-        }
+    try {
+        while (true) {
+            // Check if build was cancelled
+            if (token?.isCancellationRequested) {
+                logger.log('Build loop terminated due to cancellation.')
+                break
+            }
 
-        const step = queue.getStep()
-        if (step === undefined) {
-            break
-        }
+            const step = queue.getStep()
+            if (step === undefined) {
+                break
+            }
 
-        // Report progress
-        if (progress) {
-            progress.report({ message: queue.getStepString(step) })
-        }
+            // Report progress
+            if (progress) {
+                progress.report({ message: queue.getStepString(step) })
+            }
 
-        const env = spawnProcess(step)
-        const success = await monitorProcess(step, env)
-        skipped = skipped && !step.isExternal && step.isSkipped
-        if (success && queue.isLastStep(step)) {
-            await afterSuccessfulBuilt(step, skipped)
+            const env = spawnProcess(step)
+            const success = await monitorProcess(step, env)
+            skipped = skipped && !step.isExternal && step.isSkipped
+            if (success && queue.isLastStep(step)) {
+                await afterSuccessfulBuilt(step, skipped)
+            }
         }
+    } finally {
+        isBuilding = false
+        setTimeout(() => lw.compile.compiledPDFWriting--, vscode.workspace.getConfiguration('latex-workshop').get('latex.watch.pdf.delay') as number * 2)
     }
-    isBuilding = false
-    setTimeout(() => lw.compile.compiledPDFWriting--, vscode.workspace.getConfiguration('latex-workshop').get('latex.watch.pdf.delay') as number * 2)
 }
 /** Normalizes a command-line argument that represents a file path to be
  * relative to the current working directory (`cwd`) if it is under the root
@@ -566,18 +569,17 @@ async function afterSuccessfulBuilt(lastStep: Step, skipped: boolean) {
     if (!didAutoOpen && openAfterBuild) {
         logger.log('Showing "Open PDF" prompt to user.')
         const openAction = 'Open PDF'
-        const result = await vscode.window.showInformationMessage(
+        void vscode.window.showInformationMessage(
             'Build completed successfully.',
             openAction
-        )
-        logger.log(`User response to prompt: ${result}`)
-        if (result === openAction) {
-            try {
-                await lw.viewer.view(pdfUri)
-            } catch (e) {
-                logger.logError('Failed to open PDF viewer.', e as Error)
+        ).then(result => {
+            logger.log(`User response to prompt: ${result}`)
+            if (result === openAction) {
+                void lw.viewer.view(pdfUri).catch((e: Error) => {
+                    logger.logError('Failed to open PDF viewer.', e)
+                })
             }
-        }
+        })
     }
     // If the PDF viewer is internal, we call SyncTeX in src/components/viewer.ts.
     if (viewerMode === 'external' && synctexAfterBuild) {
