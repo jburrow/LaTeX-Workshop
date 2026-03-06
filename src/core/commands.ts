@@ -30,7 +30,9 @@ async function getResolvedPdfPath(rootPath: string): Promise<string> {
     }
 
     const expectedPdfPaths = new Set<string>([defaultPdfPath])
-    const localRootPath = await lw.file.getLocalPath(rootUri)
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(rootUri)
+    const projectRootUri = workspaceFolder?.uri ?? rootUri
+    const localRootPath = await lw.file.getLocalPath(rootUri, projectRootUri)
     if (localRootPath) {
         expectedPdfPaths.add(lw.file.getPdfPath(localRootPath))
     }
