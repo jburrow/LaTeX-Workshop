@@ -167,7 +167,8 @@ async function buildLoop() {
     }
     isBuilding = true
 
-    const configuration = vscode.workspace.getConfiguration('latex-workshop')
+    const resource = vscode.window.activeTextEditor?.document.uri ?? vscode.workspace.workspaceFolders?.[0]?.uri
+    const configuration = vscode.workspace.getConfiguration('latex-workshop', resource)
     const showProgress = configuration.get('latex.build.showProgress') as boolean
 
     if (showProgress) {
