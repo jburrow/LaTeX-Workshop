@@ -196,7 +196,7 @@ async function buildLoop() {
  * @param {vscode.CancellationToken} [token] - Optional cancellation token.
  */
 async function doBuildLoop(
-    progress?: vscode.Progress<{ message?: string; increment?: number }>,
+    progress?: vscode.Progress<{ message?: string, increment?: number }>,
     token?: vscode.CancellationToken
 ) {
     // Clear all logs before starting
