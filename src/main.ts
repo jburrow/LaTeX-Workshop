@@ -62,6 +62,12 @@ export function activate(extensionContext: vscode.ExtensionContext) {
 
     // Initialize VFS sync service
     lw.vfsSync.initialize()
+    // Ensure VFS sync is cleaned up on extension deactivation
+    extensionContext.subscriptions.push({
+        dispose: () => {
+            lw.vfsSync.cleanup()
+        }
+    })
 
     lw.onDispose(undefined, extensionContext.subscriptions)
 
