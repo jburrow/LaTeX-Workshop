@@ -283,11 +283,42 @@ Add new configuration options:
    - Test full build cycle with VFS files
    - Test file watching and re-sync
 
-3. **Manual Testing:**
+3. **Manual Testing with `vscode-vfs-demo`:**
+
+   The easiest way to get a real VFS environment locally (without needing Codespaces or a remote connection) is to install the [`vscode-vfs-demo`](https://github.com/jburrow/vscode-vfs-demo) extension. It registers a custom URI scheme (`vscode-vfs-demo://`) backed by an in-memory file system and pre-populates it with example documents.
+
+   **Setup steps:**
+
+   a. Clone and build the extension:
+      ```bash
+      git clone https://github.com/jburrow/vscode-vfs-demo
+      cd vscode-vfs-demo
+      npm install
+      npm run compile
+      ```
+
+   b. Install it into VS Code (or open the folder in VS Code and press **F5** to launch an Extension Development Host).  Alternatively, package it as a `.vsix` and install via **Extensions: Install from VSIX…**:
+      ```bash
+      npm install -g @vscode/vsce
+      vsce package
+      # installs the generated .vsix file
+      code --install-extension vscode-vfs-demo-*.vsix
+      ```
+
+   c. Once active, the extension exposes a tree-view entry in the Explorer sidebar.  You can right-click a folder and choose **"Open Folder as Virtual Workspace"**, or run the command **"VFS Demo: Open Virtual Workspace"**.  VS Code will reopen the window with a `vscode-vfs-demo://` workspace URI and the example `.tex` / `.bib` files from the demo will be present in the Explorer.
+
+   d. With the VFS workspace open, exercise LaTeX Workshop normally:
+      - Open a `.tex` file and trigger a build (**LaTeX Workshop: Build with Recipe**).
+      - Verify that the VFS sync service copies the files to a local temp directory and that `pdflatex` / `latexmk` runs successfully.
+      - Check that the generated PDF is surfaced back through the viewer.
+      - Edit a source file and confirm the watcher triggers an incremental re-sync and rebuild.
+
+   e. Confirm the URI scheme is recognised — the `FILE_URI_SCHEMES` constant (or the dynamic `isSupportedScheme()` helper) should include `vscode-vfs-demo` either statically or by detecting it from `vscode.workspace.workspaceFolders`.
+
+4. **Other Manual Testing Environments:**
    - Test with VS Code Remote - SSH
    - Test with VS Code Remote - Containers
    - Test with GitHub Codespaces
-   - Test with custom VFS extensions (e.g., `memfs`)
 
 ## Risks and Mitigations
 
