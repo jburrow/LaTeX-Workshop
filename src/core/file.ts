@@ -30,7 +30,11 @@ export const file = {
     exists,
     read,
     kpsewhich,
-    toUri
+    toUri,
+    // VFS support functions
+    isVirtual,
+    isSupportedScheme,
+    getLocalPath
 }
 
 initialize()
@@ -613,13 +617,112 @@ async function exists(uri: vscode.Uri | string): Promise<vscode.FileStat | false
  * @returns {vscode.Uri} - The corresponding VS Code URI.
  */
 function toUri(filePath: string): vscode.Uri {
-    const scheme = vscode.workspace.workspaceFolders?.filter(
-        folder => filePath?.startsWith(folder.uri.path)
-    )[0]?.uri.scheme ?? (lw.extra.liveshare.isGuest() ? 'vsls' : 'file')
-    // LiveShare guest sessions use the native path API, even though vsls uses POSIX paths
+    // Convert to URI-style path for consistent comparison with folder.uri.path
+    const uriStylePath = vscode.Uri.file(filePath).path
+    const matchingFolder = vscode.workspace.workspaceFolders?.filter(
+        folder => uriStylePath.startsWith(folder.uri.path)
+    )[0]
+    const scheme = matchingFolder?.uri.scheme ?? (lw.extra.liveshare.isGuest() ? 'vsls' : 'file')    // LiveShare guest sessions use the native path API, even though vsls uses POSIX paths
     // this is a workaround that removes the drive letter from the path
     if (scheme === 'vsls' && lw.extra.liveshare.isGuest() && os.platform() === 'win32') {
         filePath = filePath.replace(/^\w:\\/, '\\')
     }
     return vscode.Uri.file(filePath).with({ scheme })
+}
+
+// ============================================================================
+// VFS (Virtual File System) Support Functions
+// ============================================================================
+
+/**
+ * Check if a URI or path represents a virtual filesystem (not local file://).
+ *
+ * Virtual filesystems include remote workspaces, memfs, and other non-local
+ * file providers. Since external LaTeX tools require real filesystem paths,
+ * files from virtual filesystems need to be synchronized to local disk before
+ * compilation.
+ *
+ * @param {vscode.Uri | string} uriOrPath - A VS Code URI or a file path string.
+ * @returns {boolean} True if the resource is from a virtual filesystem.
+ */
+function isVirtual(uriOrPath: vscode.Uri | string): boolean {
+    let uri: vscode.Uri
+    if (typeof uriOrPath === 'string') {
+        uri = toUri(uriOrPath)
+    } else {
+        uri = uriOrPath
+    }
+
+    // 'file' scheme is local, 'vsls' (Live Share) is handled specially by the extension
+    // Everything else is considered virtual and requires syncing
+    return uri.scheme !== 'file' && uri.scheme !== 'vsls'
+}
+
+/**
+ * Check if a URI scheme is supported by the extension.
+ *
+ * Supports:
+ * - Core schemes: file, vsls, vscode-remote, vscode-vfs
+ * - Any scheme from workspace folders (dynamically detected)
+ * - Additional schemes from configuration
+ *
+ * @param {string} scheme - The URI scheme to check.
+ * @returns {boolean} True if the scheme is supported.
+ */
+function isSupportedScheme(scheme: string): boolean {
+    // Core supported schemes (backwards compatible + common remote schemes)
+    const coreSchemes = ['file', 'vsls', 'vscode-remote', 'vscode-vfs']
+    if (coreSchemes.includes(scheme)) {
+        return true
+    }
+
+    // Check if any workspace folder uses this scheme (dynamic detection)
+    if (vscode.workspace.workspaceFolders?.some(folder => folder.uri.scheme === scheme)) {
+        return true
+    }
+
+    // Check configuration for additional schemes
+    const configuration = vscode.workspace.getConfiguration('latex-workshop')
+    const additionalSchemes = configuration.get<string[]>('vfs.additionalSchemes', [])
+    if (additionalSchemes.includes(scheme)) {
+        return true
+    }
+
+    return false
+}
+
+/**
+ * Get the local filesystem path for a URI, syncing it if necessary.
+ *
+ * For virtual filesystem URIs, this function delegates to the VFS sync service
+ * to copy the file to a local temporary directory. For local files, it returns
+ * the fsPath directly.
+ *
+ * @param {vscode.Uri | string} uriOrPath - A VS Code URI or file path.
+ * @param {vscode.Uri} [projectRootUri] - The project root URI for context (optional).
+ * @returns {Promise<string | undefined>} The local filesystem path for the file, or undefined if sync fails.
+ */
+async function getLocalPath(uriOrPath: vscode.Uri | string, projectRootUri?: vscode.Uri): Promise<string | undefined> {
+    let uri: vscode.Uri
+    if (typeof uriOrPath === 'string') {
+        uri = toUri(uriOrPath)
+    } else {
+        uri = uriOrPath
+    }
+
+    // If not virtual, return fsPath directly
+    if (!isVirtual(uri)) {
+        return uri.fsPath
+    }
+
+    // Delegate to VFS sync service
+    const localPath = await lw.vfsSync.syncFile(uri, projectRootUri)
+    if (localPath) {
+        return localPath
+    }
+
+    // If sync fails for a virtual file, return undefined
+    // External tools require real filesystem paths, so a virtual path won't work
+    logger.log(`Warning: VFS sync failed for ${uri.toString(true)}. Compilation may fail.`)
+    return undefined
 }

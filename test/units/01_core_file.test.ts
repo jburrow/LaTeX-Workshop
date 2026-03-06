@@ -720,4 +720,74 @@ describe(path.basename(__filename).split('.')[0] + ':', () => {
             assert.strictEqual(result, undefined)
         })
     })
+
+    describe('lw.file.isVirtual', () => {
+        it('should return false for file:// scheme', () => {
+            const uri = vscode.Uri.file('/path/to/file.tex')
+            assert.strictEqual(lw.file.isVirtual(uri), false)
+        })
+
+        it('should return false for vsls:// scheme', () => {
+            const uri = vscode.Uri.parse('vsls:/path/to/file.tex')
+            assert.strictEqual(lw.file.isVirtual(uri), false)
+        })
+
+        it('should return true for vscode-remote:// scheme', () => {
+            const uri = vscode.Uri.parse('vscode-remote://ssh-remote+server/path/to/file.tex')
+            assert.strictEqual(lw.file.isVirtual(uri), true)
+        })
+
+        it('should return true for memfs:// scheme', () => {
+            const uri = vscode.Uri.parse('memfs:/path/to/file.tex')
+            assert.strictEqual(lw.file.isVirtual(uri), true)
+        })
+
+        it('should accept string paths and convert to URI', () => {
+            const texPath = get.path(fixture, 'main.tex')
+            assert.strictEqual(lw.file.isVirtual(texPath), false)
+        })
+    })
+
+    describe('lw.file.isSupportedScheme', () => {
+        it('should return true for file scheme', () => {
+            assert.strictEqual(lw.file.isSupportedScheme('file'), true)
+        })
+
+        it('should return true for vsls scheme', () => {
+            assert.strictEqual(lw.file.isSupportedScheme('vsls'), true)
+        })
+
+        it('should return true for vscode-remote scheme', () => {
+            assert.strictEqual(lw.file.isSupportedScheme('vscode-remote'), true)
+        })
+
+        it('should return true for vscode-vfs scheme', () => {
+            assert.strictEqual(lw.file.isSupportedScheme('vscode-vfs'), true)
+        })
+
+        it('should return false for unknown schemes by default', () => {
+            assert.strictEqual(lw.file.isSupportedScheme('unknown-scheme'), false)
+        })
+
+        it('should return true for schemes in vfs.additionalSchemes config', () => {
+            set.config('vfs.additionalSchemes', ['memfs', 'custom-vfs'])
+            assert.strictEqual(lw.file.isSupportedScheme('memfs'), true)
+            assert.strictEqual(lw.file.isSupportedScheme('custom-vfs'), true)
+        })
+    })
+
+    describe('lw.file.getLocalPath', () => {
+        it('should return fsPath directly for local files', async () => {
+            const texPath = get.path(fixture, 'main.tex')
+            const uri = vscode.Uri.file(texPath)
+            const localPath = await lw.file.getLocalPath(uri)
+            assert.pathStrictEqual(localPath, texPath)
+        })
+
+        it('should accept string paths', async () => {
+            const texPath = get.path(fixture, 'main.tex')
+            const localPath = await lw.file.getLocalPath(texPath)
+            assert.pathStrictEqual(localPath, texPath)
+        })
+    })
 })

@@ -8,6 +8,8 @@ import type { ProcessEnv, RecipeStep, Step } from '../types'
 import { build as buildRecipe } from './recipe'
 import { build as buildExternal } from './external'
 import { queue } from './queue'
+import { terminate } from './terminate'
+import * as manager from '../preview/viewer/pdfviewermanager'
 
 const logger = lw.log('Build')
 
@@ -164,6 +166,38 @@ async function buildLoop() {
         return
     }
 
+    const configuration = vscode.workspace.getConfiguration('latex-workshop')
+    const showProgress = configuration.get('latex.build.showProgress') as boolean
+
+    if (showProgress) {
+        await vscode.window.withProgress({
+            location: vscode.ProgressLocation.Notification,
+            title: 'Building LaTeX document',
+            cancellable: true
+        }, async (progress, token) => {
+            token.onCancellationRequested(() => {
+                logger.log('Build cancelled by user via progress notification.')
+                queue.clear()
+                terminate()
+            })
+            await doBuildLoop(progress, token)
+        })
+    } else {
+        await doBuildLoop()
+    }
+}
+
+/**
+ * The actual build loop implementation. Iterates through the queue and executes
+ * each Tool one by one.
+ *
+ * @param {vscode.Progress<{message?: string; increment?: number}>} [progress] - Optional progress reporter.
+ * @param {vscode.CancellationToken} [token] - Optional cancellation token.
+ */
+async function doBuildLoop(
+    progress?: vscode.Progress<{ message?: string; increment?: number }>,
+    token?: vscode.CancellationToken
+) {
     // Clear all logs before starting
     lw.parser.parse.clearLog()
     isBuilding = true
@@ -172,10 +206,22 @@ async function buildLoop() {
     // The builder will be responsible for refreshing the viewer.
     let skipped = true
     while (true) {
+        // Check if build was cancelled
+        if (token?.isCancellationRequested) {
+            logger.log('Build loop terminated due to cancellation.')
+            break
+        }
+
         const step = queue.getStep()
         if (step === undefined) {
             break
         }
+
+        // Report progress
+        if (progress) {
+            progress.report({ message: queue.getStepString(step) })
+        }
+
         const env = spawnProcess(step)
         const success = await monitorProcess(step, env)
         skipped = skipped && !step.isExternal && step.isSkipped
@@ -470,16 +516,71 @@ async function afterSuccessfulBuilt(lastStep: Step, skipped: boolean) {
     logger.log(`Successfully built ${lastStep.rootFile} .`)
     logger.refreshStatus('check', 'statusBar.foreground', 'Recipe succeeded.')
     lw.event.fire(lw.event.BuildDone)
+
+    const pdfUri = lw.file.toUri(lw.file.getPdfPath(lastStep.rootFile))
+
+    // Even if build was skipped (nothing to recompile), still handle PDF viewing
     if (!lastStep.isExternal && skipped) {
-        return
+        logger.log('Build was skipped by latexmk (nothing to recompile), but still handling PDF open.')
+    } else {
+        lw.viewer.refresh(pdfUri)
     }
-    lw.viewer.refresh(lw.file.toUri(lw.file.getPdfPath(lastStep.rootFile)))
+
     lw.completion.reference.setNumbersFromAuxFile(lastStep.rootFile)
     await lw.cache.loadFlsFile(lastStep.rootFile ?? '')
     const configuration = vscode.workspace.getConfiguration('latex-workshop', lw.file.toUri(lastStep.rootFile))
+
+    // Auto-open PDF in tab viewer if configured and no viewer is already open
+    const openAfterBuild = configuration.get('latex.build.openDocumentAfterBuild') as boolean
+    const viewerMode = configuration.get('view.pdf.viewer') as string
+    const synctexAfterBuild = configuration.get('synctex.afterBuild.enabled') as boolean
+    let didAutoOpen = false
+
+    logger.log(`Post-build PDF handling: openAfterBuild=${openAfterBuild}, viewerMode=${viewerMode}, synctexAfterBuild=${synctexAfterBuild}`)
+    logger.log(`PDF URI: ${pdfUri.toString()}`)
+
+    // Check if a viewer is already open for this PDF
+    const existingClients = manager.getClients(pdfUri)
+    const viewerAlreadyOpen = existingClients && existingClients.size > 0
+    logger.log(`Existing viewer clients: ${existingClients?.size ?? 0}, viewerAlreadyOpen=${viewerAlreadyOpen}`)
+
+    if (viewerAlreadyOpen) {
+        logger.log('PDF viewer already open, skipping auto-open and prompt.')
+        didAutoOpen = true // Viewer is already open, no need to prompt
+    } else if (openAfterBuild && viewerMode === 'tab') {
+        // SyncTeX for internal viewers will also open the viewer, so only open if SyncTeX is disabled
+        // or we're using tab mode (where SyncTeX happens after load, not before)
+        logger.log('Auto-opening PDF in tab viewer after build.')
+        try {
+            await lw.viewer.view(pdfUri, 'tab')
+            didAutoOpen = true
+        } catch (e) {
+            logger.logError('Failed to auto-open PDF viewer.', e as Error)
+        }
+    } else {
+        logger.log(`Not auto-opening: openAfterBuild=${openAfterBuild}, viewerMode=${viewerMode} (requires viewerMode=tab)`)
+    }
+
+    // Show prompt to open PDF if auto-open didn't happen
+    logger.log(`didAutoOpen=${didAutoOpen}, will show prompt: ${!didAutoOpen}`)
+    if (!didAutoOpen && openAfterBuild) {
+        logger.log('Showing "Open PDF" prompt to user.')
+        const openAction = 'Open PDF'
+        const result = await vscode.window.showInformationMessage(
+            'Build completed successfully.',
+            openAction
+        )
+        logger.log(`User response to prompt: ${result}`)
+        if (result === openAction) {
+            try {
+                await lw.viewer.view(pdfUri)
+            } catch (e) {
+                logger.logError('Failed to open PDF viewer.', e as Error)
+            }
+        }
+    }
     // If the PDF viewer is internal, we call SyncTeX in src/components/viewer.ts.
-    if (configuration.get('view.pdf.viewer') === 'external' && configuration.get('synctex.afterBuild.enabled')) {
-        const pdfUri = lw.file.toUri(lw.file.getPdfPath(lastStep.rootFile))
+    if (viewerMode === 'external' && synctexAfterBuild) {
         logger.log('SyncTex after build invoked.')
         lw.locate.synctex.toPDF(pdfUri)
     }

@@ -1,6 +1,5 @@
 import * as vscode from 'vscode'
 import * as path from 'path'
-import * as fs from 'fs'
 
 import { lw } from '../lw'
 import * as utils from '../utils/utils'
@@ -209,7 +208,7 @@ function findFromRoot(): string | undefined {
     if (!vscode.window.activeTextEditor || root.file.path === undefined) {
         return
     }
-    if (!lw.constant.FILE_URI_SCHEMES.includes(vscode.window.activeTextEditor.document.uri.scheme)) {
+    if (!lw.file.isSupportedScheme(vscode.window.activeTextEditor.document.uri.scheme)) {
         logger.log(`The active document cannot be used as the root file: ${vscode.window.activeTextEditor.document.uri.toString(true)}`)
         return
     }
@@ -236,7 +235,7 @@ async function findFromActive(): Promise<string | undefined> {
     if (!vscode.window.activeTextEditor) {
         return
     }
-    if (!lw.constant.FILE_URI_SCHEMES.includes(vscode.window.activeTextEditor.document.uri.scheme)) {
+    if (!lw.file.isSupportedScheme(vscode.window.activeTextEditor.document.uri.scheme)) {
         logger.log(`The active document cannot be used as the root file: ${vscode.window.activeTextEditor.document.uri.toString(true)}`)
         return
     }
@@ -311,9 +310,10 @@ async function findInWorkspace(): Promise<string | undefined> {
     const rootFilesExcludeGlob = rootFilesExcludePatterns.length > 0 ? '{' + rootFilesExcludePatterns.join(',') + '}' : undefined
     try {
         const fileUris = await vscode.workspace.findFiles(rootFilesIncludeGlob, rootFilesExcludeGlob)
+        logger.log(`Found ${fileUris.length} files matching pattern in workspace`)
         const candidates: string[] = []
         for (const fileUri of fileUris) {
-            if (!lw.constant.FILE_URI_SCHEMES.includes(fileUri.scheme)) {
+            if (!lw.file.isSupportedScheme(fileUri.scheme)) {
                 logger.log(`Skip the file: ${fileUri.toString(true)}`)
                 continue
             }
@@ -322,9 +322,18 @@ async function findInWorkspace(): Promise<string | undefined> {
                 logger.log(`Found root file from '.fls': ${fileUri.fsPath}`)
                 return fileUri.fsPath
             }
-            const content = utils.stripCommentsAndVerbatim(fs.readFileSync(fileUri.fsPath).toString())
+            // Use vscode.workspace.fs for VFS compatibility
+            let content: string
+            try {
+                const contentBytes = await vscode.workspace.fs.readFile(fileUri)
+                content = utils.stripCommentsAndVerbatim(new TextDecoder().decode(contentBytes))
+            } catch (err) {
+                logger.log(`Failed to read file ${fileUri.toString(true)}: ${err}`)
+                continue
+            }
             const result = content.match(getIndicator())
             if (result) {
+                logger.log(`File ${fileUri.toString(true)} matches indicator pattern`)
                 // Can be a root
                 const activeFilePath = vscode.window.activeTextEditor?.document.fileName ?? ''
                 if (vscode.window.activeTextEditor

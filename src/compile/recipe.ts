@@ -53,12 +53,61 @@ function setDockerPath() {
  */
 export async function build(rootFile: string, langId: string, buildLoop: () => Promise<void>, recipeName?: string) {
     logger.log(`Build root file ${rootFile}`)
-    let cwd: string = path.dirname(lw.file.toUri(rootFile).fsPath)
+
+    // Check if the root file is from a virtual filesystem and needs syncing
+    const rootUri = lw.file.toUri(rootFile)
+    let effectiveRootFile = rootFile
+    let effectiveCwd: string
+
+    if (lw.file.isVirtual(rootUri)) {
+        logger.log(`Root file is from virtual filesystem: ${rootUri.scheme}`)
+        // Sync the project to local disk for compilation
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(rootUri)
+        if (workspaceFolder) {
+            const project = await lw.vfsSync.syncProject(workspaceFolder.uri)
+            if (project) {
+                // Map the root file to its local path
+                const localPath = await lw.file.getLocalPath(rootUri, workspaceFolder.uri)
+                if (localPath) {
+                    effectiveRootFile = localPath
+                    effectiveCwd = path.dirname(effectiveRootFile)
+                    logger.log(`VFS project synced, using local root file: ${effectiveRootFile}`)
+                } else {
+                    logger.log('VFS sync failed for root file, attempting to build with virtual path (may fail)')
+                    effectiveCwd = path.dirname(rootUri.fsPath)
+                }
+            } else {
+                logger.log('VFS sync failed, attempting to build with virtual path (may fail)')
+                effectiveCwd = path.dirname(rootUri.fsPath)
+            }
+        } else {
+            // Single file without workspace folder
+            const localPath = await lw.vfsSync.syncFile(rootUri)
+            if (localPath) {
+                effectiveRootFile = localPath
+                effectiveCwd = path.dirname(effectiveRootFile)
+                logger.log(`VFS file synced: ${effectiveRootFile}`)
+            } else {
+                effectiveCwd = path.dirname(rootUri.fsPath)
+            }
+        }
+    } else {
+        effectiveCwd = path.dirname(rootUri.fsPath)
+    }
+
     const configuration = vscode.workspace.getConfiguration('latex-workshop')
     if (configuration.get('latex.build.fromWorkspaceFolder')) {
-        const workspaceFolder = vscode.workspace.getWorkspaceFolder(lw.file.toUri(rootFile))
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(rootUri)
         if (workspaceFolder) {
-            cwd = workspaceFolder.uri.fsPath
+            if (lw.file.isVirtual(workspaceFolder.uri)) {
+                // For VFS, use the synced local path
+                const project = await lw.vfsSync.syncProject(workspaceFolder.uri)
+                if (project) {
+                    effectiveCwd = project.localRootPath
+                }
+            } else {
+                effectiveCwd = workspaceFolder.uri.fsPath
+            }
         }
     }
 
@@ -66,13 +115,20 @@ export async function build(rootFile: string, langId: string, buildLoop: () => P
     await vscode.workspace.saveAll()
 
     // Create build tools based on the recipe system
-    const tools = await createBuildTools(rootFile, langId, recipeName)
+    const tools = await createBuildTools(effectiveRootFile, langId, recipeName)
 
     // Create output subdirectories for included files
     if (tools?.map(tool => tool.command).includes('latexmk') && rootFile === lw.root.subfiles.path && lw.root.file.path) {
-        await createAuxSubFolders(lw.root.file.path)
+        let subfileRoot: string
+        if (lw.file.isVirtual(lw.file.toUri(lw.root.file.path))) {
+            const localPath = await lw.file.getLocalPath(lw.root.file.path)
+            subfileRoot = localPath ?? lw.root.file.path
+        } else {
+            subfileRoot = lw.root.file.path
+        }
+        await createAuxSubFolders(subfileRoot)
     } else {
-        await createAuxSubFolders(rootFile)
+        await createAuxSubFolders(effectiveRootFile)
     }
 
     // Check for invalid toolchain
@@ -83,14 +139,14 @@ export async function build(rootFile: string, langId: string, buildLoop: () => P
 
     // Add tools to the queue with timestamp
     const timestamp = Date.now()
-    tools.forEach(tool => queue.add(tool, rootFile, recipeName || 'Build', timestamp, false, cwd))
+    tools.forEach(tool => queue.add(tool, effectiveRootFile, recipeName || 'Build', timestamp, false, effectiveCwd))
 
     // #4513 If the recipe contains a forced latexmk compilation, don't set the
     // compiledPDFPath so that PDF refresh is handled by file watcher.
     if (!tools.some(tool => tool.command === 'latexmk' &&
                             tool.args?.includes('-interaction=nonstopmode') &&
                             tool.args?.includes('-f'))) {
-        lw.compile.compiledPDFPath = lw.file.getPdfPath(rootFile)
+        lw.compile.compiledPDFPath = lw.file.getPdfPath(effectiveRootFile)
     }
     // Execute the build loop
     await buildLoop()

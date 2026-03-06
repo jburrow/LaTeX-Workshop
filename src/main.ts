@@ -10,6 +10,8 @@ import { event } from './core/event'
 lw.event = event
 import { file } from './core/file'
 lw.file = file
+import { vfsSync } from './core/vfs-sync'
+lw.vfsSync = vfsSync
 import { watcher } from './core/watcher'
 lw.watcher = watcher
 import { cache } from './core/cache'
@@ -58,6 +60,9 @@ export function activate(extensionContext: vscode.ExtensionContext) {
     log.logConfig()
     log.logDeprecatedConfig()
 
+    // Initialize VFS sync service
+    lw.vfsSync.initialize()
+
     lw.onDispose(undefined, extensionContext.subscriptions)
 
     registerLatexWorkshopCommands(extensionContext)
@@ -67,7 +72,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
     }))
 
     extensionContext.subscriptions.push(vscode.workspace.onDidSaveTextDocument( (e: vscode.TextDocument) => {
-        if (!lw.constant.FILE_URI_SCHEMES.includes(e.uri.scheme)){
+        if (!lw.file.isSupportedScheme(e.uri.scheme)){
             return
         }
         if (lw.file.hasLaTeXLangId(e.languageId) || lw.file.hasLaTeXClassPackageLangId(e.languageId) ||
@@ -105,7 +110,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
             logger.showStatus()
         }
 
-        if (e && !lw.constant.FILE_URI_SCHEMES.includes(e.document.uri.scheme)) {
+        if (e && !lw.file.isSupportedScheme(e.document.uri.scheme)) {
             return
         }
 
@@ -131,7 +136,7 @@ export function activate(extensionContext: vscode.ExtensionContext) {
     }))
 
     extensionContext.subscriptions.push(vscode.workspace.onDidChangeTextDocument((e: vscode.TextDocumentChangeEvent) => {
-        if (!lw.constant.FILE_URI_SCHEMES.includes(e.document.uri.scheme)){
+        if (!lw.file.isSupportedScheme(e.document.uri.scheme)){
             return
         }
         if (!lw.file.hasLaTeXWorkshopLangId(e.document.languageId)) {
