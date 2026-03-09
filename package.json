@@ -34,8 +34,8 @@
   "main": "./out/src/main.js",
   "capabilities": {
     "virtualWorkspaces": {
-      "supported": "limited",
-      "description": "Only a few features are supported."
+      "supported": true,
+      "description": "VFS files are synced to local temp directory for compilation."
     },
     "untrustedWorkspaces": {
       "supported": false
@@ -553,14 +553,12 @@
         "command": "latex-workshop.build",
         "title": "%command.build%",
         "category": "LaTeX Workshop",
-        "icon": "$(debug-start)",
-        "enablement": "!virtualWorkspace"
+        "icon": "$(debug-start)"
       },
       {
         "command": "latex-workshop.recipes",
         "title": "%command.recipes%",
-        "category": "LaTeX Workshop",
-        "enablement": "!virtualWorkspace"
+        "category": "LaTeX Workshop"
       },
       {
         "command": "latex-workshop.view",
@@ -581,8 +579,7 @@
       {
         "command": "latex-workshop.viewExternal",
         "title": "%command.viewExternal%",
-        "category": "LaTeX Workshop",
-        "enablement": "!virtualWorkspace"
+        "category": "LaTeX Workshop"
       },
       {
         "command": "latex-workshop.refresh-viewer",
@@ -592,8 +589,7 @@
       {
         "command": "latex-workshop.kill",
         "title": "%command.kill%",
-        "category": "LaTeX Workshop",
-        "enablement": "!virtualWorkspace"
+        "category": "LaTeX Workshop"
       },
       {
         "command": "latex-workshop.synctex",
@@ -603,8 +599,7 @@
       {
         "command": "latex-workshop.clean",
         "title": "%command.clean%",
-        "category": "LaTeX Workshop",
-        "enablement": "!virtualWorkspace"
+        "category": "LaTeX Workshop"
       },
       {
         "command": "latex-workshop.citation",
@@ -634,8 +629,7 @@
       {
         "command": "latex-workshop.compilerlog",
         "title": "%command.compilerlog%",
-        "category": "LaTeX Workshop",
-        "enablement": "!virtualWorkspace"
+        "category": "LaTeX Workshop"
       },
       {
         "command": "latex-workshop.log",
@@ -739,13 +733,13 @@
         "key": "ctrl+l alt+b",
         "mac": "cmd+l alt+b",
         "command": "latex-workshop.build",
-        "when": "editorLangId =~ /^bibtex$|^latex$|^latex-class$|^latex-package$|^context$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && config.latex-workshop.bind.altKeymap.enabled && !virtualWorkspace"
+        "when": "editorLangId =~ /^bibtex$|^latex$|^latex-class$|^latex-package$|^context$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && config.latex-workshop.bind.altKeymap.enabled"
       },
       {
         "key": "ctrl+l alt+c",
         "mac": "cmd+l alt+c",
         "command": "latex-workshop.clean",
-        "when": "editorLangId =~ /^bibtex$|^latex$|^latex-class$|^latex-package$|^context$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && config.latex-workshop.bind.altKeymap.enabled && !virtualWorkspace"
+        "when": "editorLangId =~ /^bibtex$|^latex$|^latex-class$|^latex-package$|^context$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && config.latex-workshop.bind.altKeymap.enabled"
       },
       {
         "key": "ctrl+l alt+v",
@@ -775,13 +769,13 @@
         "key": "ctrl+alt+b",
         "mac": "cmd+alt+b",
         "command": "latex-workshop.build",
-        "when": "editorLangId =~ /^build$|^latex$|^latex-class$|^latex-package$|^context$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && !config.latex-workshop.bind.altKeymap.enabled && !virtualWorkspace"
+        "when": "editorLangId =~ /^bibtex$|^latex$|^latex-class$|^latex-package$|^context$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && !config.latex-workshop.bind.altKeymap.enabled"
       },
       {
         "key": "ctrl+alt+c",
         "mac": "cmd+alt+c",
         "command": "latex-workshop.clean",
-        "when": "editorLangId =~ /^build$|^latex$|^latex-class$|^latex-package$|^context$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && !config.latex-workshop.bind.altKeymap.enabled && !virtualWorkspace"
+        "when": "editorLangId =~ /^bibtex$|^latex$|^latex-class$|^latex-package$|^context$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && !config.latex-workshop.bind.altKeymap.enabled"
       },
       {
         "key": "ctrl+alt+v",
@@ -1381,6 +1375,33 @@
           "default": true,
           "markdownDescription": "Use kpsewhich as defined by `#latex-workshop.kpsewhich.path#` to resolve bibliography file paths for intellisense parsing."
         },
+        "latex-workshop.vfs.sync.enabled": {
+          "scope": "window",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Enable automatic synchronization of virtual filesystem files to local disk for compilation. Virtual filesystems include remote workspaces (SSH, Containers, Codespaces) and custom VFS providers."
+        },
+        "latex-workshop.vfs.sync.excludePatterns": {
+          "scope": "window",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "**/node_modules/**",
+            "**/.git/**"
+          ],
+          "markdownDescription": "Glob patterns to exclude from VFS synchronization. Files matching these patterns will not be copied to the local temp directory."
+        },
+        "latex-workshop.vfs.additionalSchemes": {
+          "scope": "window",
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [],
+          "markdownDescription": "Additional URI schemes to treat as supported virtual file systems (e.g., 'memfs', 'github'). By default, the extension supports 'file', 'vsls', 'vscode-remote', and 'vscode-vfs' schemes, plus any scheme used by workspace folders."
+        },
         "latex-workshop.latex.bibDirs": {
           "scope": "window",
           "type": "array",
@@ -1535,6 +1556,18 @@
           "type": "boolean",
           "default": true,
           "markdownDescription": "Clear the LaTeX Compiler logs before every step of a recipe. Set this property to false to keep the logs of all tools in a recipe."
+        },
+        "latex-workshop.latex.build.showProgress": {
+          "scope": "resource",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Show a progress notification during LaTeX document builds. The notification displays the current recipe step and allows cancellation of the build process."
+        },
+        "latex-workshop.latex.build.openDocumentAfterBuild": {
+          "scope": "resource",
+          "type": "boolean",
+          "default": true,
+          "markdownDescription": "Automatically open the generated PDF document in a VS Code tab after a successful build. Only applies when `#latex-workshop.view.pdf.viewer#` is set to `tab`."
         },
         "latex-workshop.latex.autoClean.run": {
           "scope": "resource",
@@ -2911,12 +2944,12 @@
     "menus": {
       "editor/context": [
         {
-          "when": "config.latex-workshop.showContextMenu && editorLangId =~ /^latex$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && !virtualWorkspace",
+          "when": "config.latex-workshop.showContextMenu && editorLangId =~ /^latex$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/",
           "command": "latex-workshop.build",
           "group": "navigation@100"
         },
         {
-          "when": "config.latex-workshop.showContextMenu && editorLangId =~ /^latex$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && !virtualWorkspace",
+          "when": "config.latex-workshop.showContextMenu && editorLangId =~ /^latex$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/",
           "command": "latex-workshop.synctex",
           "group": "navigation@101"
         }
@@ -2928,7 +2961,7 @@
           "group": "navigation@2"
         },
         {
-          "when": "editorLangId =~ /^latex$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/ && !virtualWorkspace",
+          "when": "editorLangId =~ /^latex$|^latex-expl3$|^doctex$|^rsweave$|^jlweave$|^pweave$/",
           "command": "latex-workshop.build",
           "group": "navigation@1"
         }

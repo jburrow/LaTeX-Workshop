@@ -5,6 +5,48 @@ import { getSurroundingMacroRange, stripText } from '../utils/utils'
 
 const logger = lw.log('Commander')
 
+function normalizePathForComparison(filePath: string): string {
+    const normalized = path.normalize(filePath)
+    return process.platform === 'win32' ? normalized.toLowerCase() : normalized
+}
+
+function isSamePath(left: string, right: string): boolean {
+    return normalizePathForComparison(left) === normalizePathForComparison(right)
+}
+
+async function getResolvedPdfPath(rootPath: string): Promise<string> {
+    const defaultPdfPath = lw.file.getPdfPath(rootPath)
+    const rootUri = lw.file.toUri(rootPath)
+
+    if (!lw.file.isVirtual(rootUri)) {
+        logger.log(`Using PDF path for root ${rootPath}: ${defaultPdfPath}`)
+        return defaultPdfPath
+    }
+
+    const compiledPdfPath = lw.compile.compiledPDFPath
+    if (!compiledPdfPath) {
+        logger.log(`No compiled PDF path found for virtual root ${rootPath}. Using ${defaultPdfPath}`)
+        return defaultPdfPath
+    }
+
+    const expectedPdfPaths = new Set<string>([defaultPdfPath])
+    const workspaceFolder = vscode.workspace.getWorkspaceFolder(rootUri)
+    const projectRootUri = workspaceFolder?.uri ?? rootUri
+    const localRootPath = await lw.file.getLocalPath(rootUri, projectRootUri)
+    if (localRootPath) {
+        expectedPdfPaths.add(lw.file.getPdfPath(localRootPath))
+    }
+
+    const matchedPath = [...expectedPdfPaths].find(expectedPdfPath => isSamePath(expectedPdfPath, compiledPdfPath))
+    if (matchedPath) {
+        logger.log(`Using compiled PDF path for root ${rootPath}: ${compiledPdfPath}`)
+        return compiledPdfPath
+    }
+
+    logger.log(`Compiled PDF path ${compiledPdfPath} does not match root ${rootPath}. Using ${defaultPdfPath}`)
+    return defaultPdfPath
+}
+
 export async function hostPort() {
     logger.log('HOSTPORT command invoked.')
     if (lw.extra.liveshare.isGuest()) {
@@ -83,7 +125,8 @@ export async function view(mode?: 'tab' | 'browser' | 'external' | vscode.Uri) {
     if (!pickedRootFile) {
         return
     }
-    return lw.viewer.view(lw.file.toUri(lw.file.getPdfPath(pickedRootFile)), typeof mode === 'string' ? mode : undefined)
+    const pdfPath = await getResolvedPdfPath(pickedRootFile)
+    return lw.viewer.view(lw.file.toUri(pdfPath), typeof mode === 'string' ? mode : undefined)
 }
 
 export function refresh() {
@@ -96,7 +139,7 @@ export function kill() {
     lw.compile.terminate()
 }
 
-export function synctex() {
+export async function synctex() {
     logger.log('SYNCTEX command invoked.')
     if (!vscode.window.activeTextEditor || !lw.file.hasLaTeXLangId(vscode.window.activeTextEditor.document.languageId)) {
         logger.log('Cannot start SyncTeX. The active editor is undefined, or the document is not a LaTeX document.')
@@ -108,10 +151,12 @@ export function synctex() {
         return
     }
     let pdfUri: vscode.Uri | undefined = undefined
-    if (lw.root.subfiles.path && configuration.get('latex.rootFile.useSubFile')) {
-        pdfUri = lw.file.toUri(lw.file.getPdfPath(lw.root.subfiles.path))
-    } else if (lw.root.file.path !== undefined) {
-        pdfUri = lw.file.toUri(lw.file.getPdfPath(lw.root.file.path))
+    const rootPath = lw.root.subfiles.path && configuration.get('latex.rootFile.useSubFile')
+        ? lw.root.subfiles.path
+        : lw.root.file.path
+    if (rootPath !== undefined) {
+        const pdfPath = await getResolvedPdfPath(rootPath)
+        pdfUri = lw.file.toUri(pdfPath)
     }
     lw.locate.synctex.toPDF(pdfUri)
 }

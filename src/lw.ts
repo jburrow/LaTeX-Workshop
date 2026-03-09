@@ -4,6 +4,7 @@ import * as cs from 'cross-spawn'
 import type { log } from './utils/logger'
 import type { event } from './core/event'
 import type { file } from './core/file'
+import type { vfsSync } from './core/vfs-sync'
 import type { watcher } from './core/watcher'
 import type { cache } from './core/cache'
 import type { root } from './core/root'
@@ -31,6 +32,7 @@ export const lw = {
     log: {} as typeof log.getLogger,
     event: {} as typeof event,
     file: {} as typeof file,
+    vfsSync: {} as typeof vfsSync,
     watcher: {} as typeof watcher,
     cache: {} as typeof cache,
     root: {} as typeof root,
@@ -82,8 +84,7 @@ const constant = {
         'cases', 'centernot', 'colortbl', 'empheq', 'enclose', 'extpfeil',
         'gensymb', 'html', 'mathtools', 'mhchem', 'physics', 'textcomp',
         'textmacros', 'unicode', 'upgreek', 'verb'
-    ],
-    FILE_URI_SCHEMES: ['file', 'vsls']
+    ]
 }
 lw.constant = constant
 
